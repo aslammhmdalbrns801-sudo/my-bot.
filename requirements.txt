@@ -1,9 +1,6 @@
 pyTelegramBotAPI
 yt-dlp
 requests
+psutil
+speedtest-cli
 pillow
-gTTS
-wikipedia
-pyqrcode
-pypng
-ffmpeg-python

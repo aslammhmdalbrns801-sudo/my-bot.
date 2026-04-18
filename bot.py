@@ -1,94 +1,83 @@
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import yt_dlp
-import requests
 import os
-import platform
-import datetime
-import random
-import json
+import yt_dlp
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
-# --- إعدادات الإمبراطورية ---
-TOKEN = '8750551644:AAGnsTxoKz7kOEDIOWhDWE-VQT2XRBWS82A'
-ADMIN_ID = 5391115585 
-bot = telebot.TeleBot(TOKEN)
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 5391115585
 
-# قاعدة بيانات المستخدمين (JSON)
-if not os.path.exists('users.json'):
-    with open('users.json', 'w') as f: json.dump([], f)
+# /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔥 ابعتلي لينك فيديو وأنا هنزلهولك صوت أو فيديو")
 
-# --- محرك الميزات (50 ميزة مدمجة ومخطط لها) ---
-# تشمل: تحميل ميديا، بحث سينمائي، فحص نظام، تحويل صيغ، اختصار روابط، توليد QR، إلخ.
+# استقبال اللينكات
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
 
-def main_menu(uid):
-    markup = InlineKeyboardMarkup(row_width=3)
-    btns = [
-        InlineKeyboardButton("🎬 ميديا", callback_data="media"),
-        InlineKeyboardButton("🎞️ أفلام", callback_data="movie"),
-        InlineKeyboardButton("🛡️ أدوات نظام", callback_data="sys_tools"),
-        InlineKeyboardButton("🌐 ترجمة", callback_data="trans"),
-        InlineKeyboardButton("🔗 روابط", callback_data="links"),
-        InlineKeyboardButton("📱 تطبيقات", callback_data="apps"),
-        InlineKeyboardButton("📷 صور لـ PDF", callback_data="img2pdf"),
-        InlineKeyboardButton("🎲 ترفيه", callback_data="fun"),
-        InlineKeyboardButton("⚙️ إعدادات", callback_data="settings")
+    keyboard = [
+        [
+            InlineKeyboardButton("🎧 صوت", callback_data=f"audio|{url}"),
+            InlineKeyboardButton("🎬 فيديو", callback_data=f"video|{url}")
+        ]
     ]
-    markup.add(*btns)
-    if uid == ADMIN_ID:
-        markup.add(InlineKeyboardButton("🔐 لوحة التحكم الملكية (ADMIN)", callback_data="admin_view"))
-    return markup
 
-@bot.message_handler(commands=['start'])
-def start_bot(message):
-    uid = message.from_user.id
-    # إضافة المستخدم للقاعدة
-    with open('users.json', 'r+') as f:
-        users = json.load(f)
-        if uid not in users:
-            users.append(uid)
-            f.seek(0); json.dump(users, f)
-            
-    bot.send_message(message.chat.id, 
-        f"🔥 **مرحباً بك في المنظومة الأسطورية V5.0**\n"
-        "━─━─━─━─━─━─━─━─━\n"
-        "⚡ `البوت الآن يعمل بمحركات Python و Shell.`\n"
-        "💎 `أكثر من 50 ميزة في انتظارك..`\n"
-        "━─━─━─━─━─━─━─━─━", 
-        parse_mode="Markdown", reply_markup=main_menu(uid))
+    await update.message.reply_text(
+        "اختار نوع التحميل:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-# --- ميزة الـ Shell (دمج لغات النظام) ---
-@bot.callback_query_handler(func=lambda call: call.data == "sys_tools")
-def system_info(call):
-    # هنا بنستخدم أوامر نظام (Shell) عشان نجيب معلومات التيرمكس أو السيرفر
-    info = f"📟 **معلومات النظام:**\n\n" \
-           f"OS: `{platform.system()}`\n" \
-           f"Node: `{platform.node()}`\n" \
-           f"Time: `{datetime.datetime.now().strftime('%H:%M:%S')}`"
-    bot.edit_message_text(info, call.message.chat.id, call.message.message_id, 
-                          reply_markup=main_menu(call.from_user.id), parse_mode="Markdown")
+# التعامل مع الاختيار
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-# --- محرك البحث عن الأفلام الفخم ---
-@bot.callback_query_handler(func=lambda call: call.data == "movie")
-def ask_movie(call):
-    msg = bot.send_message(call.message.chat.id, "🔍 **أرسل اسم الفيلم بالإنجليزية (مثال: Joker):**")
-    bot.register_next_step_handler(msg, fetch_movie)
+    data = query.data.split("|")
+    mode = data[0]
+    url = data[1]
 
-def fetch_movie(message):
-    api_key = "3d1c166d"
-    res = requests.get(f"http://www.omdbapi.com/?t={message.text}&apikey={api_key}").json()
-    if res.get('Response') == 'True':
-        cap = f"💎 **{res['Title']}** ({res['Year']})\n⭐ التقييم: `{res['imdbRating']}`\n🎭 النوع: `{res['Genre']}`\n\n📖 القصة: {res['Plot'][:150]}..."
-        bot.send_photo(message.chat.id, res['Poster'], caption=cap, parse_mode="Markdown")
-    else:
-        bot.reply_to(message, "❌ لم أجد هذا الفيلم في أرشيفي الأسطوري.")
+    await query.message.reply_text("⏳ جاري التحميل...")
 
-# --- لوحة التحكم الملكية للآدمن ---
-@bot.callback_query_handler(func=lambda call: call.data == "admin_view")
-def admin_panel(call):
-    if call.from_user.id != ADMIN_ID: return
-    with open('users.json', 'r') as f: users = json.load(f)
-    bot.edit_message_text(f"👑 **أهلاً يا زعيم.. إحصائياتك:**\n\n👥 المشتركون: `{len(users)}`", 
-                          call.message.chat.id, call.message.message_id, 
-                          reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("📢 إذاعة شاملة", callback_data="bc")))
+    try:
+        if mode == "audio":
+            ydl_opts = {
+                'format': 'bestaudio',
+                'outtmpl': 'audio.%(ext)s',
+                'quiet': True
+            }
+        else:
+            ydl_opts = {
+                'format': 'best',
+                'outtmpl': 'video.%(ext)s',
+                'quiet': True
+            }
 
-bot.infinity_polling()
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+
+        if mode == "audio":
+            await query.message.reply_audio(audio=open(filename, 'rb'))
+        else:
+            await query.message.reply_video(video=open(filename, 'rb'))
+
+        os.remove(filename)
+
+    except Exception as e:
+        await query.message.reply_text("❌ حصل خطأ أو الرابط غير مدعوم")
+
+# لوحة الأدمن
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_ID:
+        return await update.message.reply_text("❌ مش مصرح لك")
+
+    await update.message.reply_text("⚙️ لوحة التحكم:\n- البوت شغال\n- تقدر تضيف ميزات")
+
+# تشغيل البوت
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", admin))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
+app.add_handler(CallbackQueryHandler(button))
+
+app.run_polling()

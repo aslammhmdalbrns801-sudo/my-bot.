@@ -1,3 +1,9 @@
-python-telegram-bot==20.7
+pyTelegramBotAPI
 yt-dlp
+requests
+pillow
+gTTS
+wikipedia
+pyqrcode
+pypng
 ffmpeg-python

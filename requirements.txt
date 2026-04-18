@@ -1,0 +1,6 @@
+flask
+yt-dlp
+pyTelegramBotAPI
+yt-dlp
+pyTelegramBotAPI
+yt-dlp

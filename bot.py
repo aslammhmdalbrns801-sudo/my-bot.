@@ -2,101 +2,128 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 import os
-import glob
 import requests
+import json
 
-# توكن البوت
+# --- إعدادات العظمة ---
 TOKEN = '8750551644:AAGnsTxoKz7kOEDIOWhDWE-VQT2XRBWS82A'
+ADMIN_ID = 5391115585  # هويتك كزعيم للبوت
 bot = telebot.TeleBot(TOKEN)
 
-user_data = {}
+# قاعدة بيانات وهمية (يفضل استخدام SQLite لاحقاً)
+db = {"users": set(), "maintenance": False}
+
+# --- لوحات التحكم الفخمة ---
+
+def main_menu():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton("🎬 تحميل ميديا", callback_data="ui_download"),
+        InlineKeyboardButton("🔍 بحث أفلام", callback_data="ui_movie"),
+        InlineKeyboardButton("📱 تطبيقات", callback_data="ui_apps"),
+        InlineKeyboardButton("🛡️ الدعم الفني", callback_data="ui_support")
+    )
+    return markup
+
+def admin_panel():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton("📢 إذاعة (Broadcast)", callback_data="adm_broadcast"),
+        InlineKeyboardButton("📊 إحصائيات", callback_data="adm_stats"),
+        InlineKeyboardButton("🛠️ وضع الصيانة", callback_data="adm_maint"),
+        InlineKeyboardButton("🔙 العودة للقائمة", callback_data="ui_back")
+    )
+    return markup
+
+# --- الأوامر الأساسية ---
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "🔥 **أهلاً بك في البوت الشامل V2.0**\n\n"
-                          "يمكنني تحميل:\n"
-                          "🎵 أغاني وفيديوهات (YouTube, TikTok, etc.)\n"
-                          "📱 تطبيقات وألعاب (روابط APK مباشرة)\n"
-                          "📦 ملفات مضغوطة وروابط مباشرة\n\n"
-                          "أرسل الرابط الآن وابدأ التجربة!", parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    url = message.text
-    chat_id = message.chat.id
+def start_cmd(message):
+    db["users"].add(message.chat.id)
+    name = message.from_user.first_name
     
-    if not url.startswith("http"):
-        bot.reply_to(message, "⚠️ يرجى إرسال رابط صحيح.")
-        return
-
-    # فحص لو الرابط تطبيق أو ملف مباشر
-    file_extensions = ('.apk', '.zip', '.exe', '.rar', '.pdf', '.jpg', '.png')
-    if any(ext in url.lower() for ext in file_extensions):
-        download_direct_file(message, url)
-    else:
-        # لو رابط ميديا (يوتيوب وغيرها)
-        user_data[chat_id] = url
-        markup = InlineKeyboardMarkup()
-        markup.row(
-            InlineKeyboardButton("🎬 فيديو", callback_data="video"),
-            InlineKeyboardButton("🎵 صوت", callback_data="audio")
-        )
-        bot.reply_to(message, "📥 **تم اكتشاف رابط ميديا، اختر الصيغة:**", reply_markup=markup, parse_mode="Markdown")
-
-def download_direct_file(message, url):
-    msg = bot.reply_to(message, "⏳ **جاري فحص وتحميل الملف المباشر...**")
-    try:
-        file_name = url.split("/")[-1].split("?")[0]
-        r = requests.get(url, stream=True, timeout=120)
+    welcome_msg = (
+        f"👑 **أهلاً بك يا {name} في المنظومة الأسطورية**\n"
+        "━─━─━─━─━─━─━─━─━\n"
+        "✨ `أنا مساعدك الذكي المتكامل..` \n"
+        "⚡ `أستطيع التحميل، البحث، وتوفير الأدوات.`\n"
+        "━─━─━─━─━─━─━─━─━\n"
+        "👇 **اختر وجهتك من الأزرار أدناه:**"
+    )
+    
+    # زر مخفي يظهر للآدمن فقط
+    markup = main_menu()
+    if message.from_user.id == ADMIN_ID:
+        markup.add(InlineKeyboardButton("🔐 لوحة التحكم الملكية", callback_data="ui_admin"))
         
-        # التأكد من الحجم (التليجرام بوت له حدود في الرفع المباشر)
-        total_size = int(r.headers.get('content-length', 0))
-        if total_size > 50 * 1024 * 1024: # 50 ميجا
-             bot.edit_message_text("❌ الحجم كبير جداً (أكبر من 50 ميجا). البوتات العادية لا تدعم رفع ملفات ضخمة من روابط مباشرة.", message.chat.id, msg.message_id)
-             return
+    bot.send_message(message.chat.id, welcome_msg, parse_mode="Markdown", reply_markup=markup)
 
-        with open(file_name, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk: f.write(chunk)
-        
-        with open(file_name, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption=f"✅ تم تحميل ملفك:\n`{file_name}`", parse_mode="Markdown")
-        os.remove(file_name)
-        bot.delete_message(message.chat.id, msg.message_id)
-    except Exception as e:
-        bot.edit_message_text(f"❌ خطأ في تحميل الملف: {str(e)[:50]}", message.chat.id, msg.message_id)
+# --- معالجة الضغط على الأزرار ---
 
 @bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    chat_id = call.message.chat.id
-    url = user_data.get(chat_id)
-    if not url: return
+def callback_handler(call):
+    uid = call.from_user.id
+    cid = call.message.chat.id
 
-    bot.edit_message_text("🚀 **بدأ التحميل... سأرسله لك فوراً.**", chat_id, call.message.message_id, parse_mode="Markdown")
+    if call.data == "ui_admin" and uid == ADMIN_ID:
+        bot.edit_message_text("🎩 **مرحباً بك يا زعيم.. تحكم في إمبراطوريتك:**", cid, call.message.message_id, reply_markup=admin_panel(), parse_mode="Markdown")
+    
+    elif call.data == "ui_movie":
+        msg = bot.send_message(cid, "🎬 **أرسل الآن اسم الفيلم الذي تبحث عنه بالإنجليزية:**")
+        bot.register_next_step_handler(msg, search_movie)
+
+    elif call.data == "adm_stats" and uid == ADMIN_ID:
+        bot.answer_callback_query(call.id, "📊 جاري جلب البيانات..")
+        bot.send_message(cid, f"📈 **إحصائيات القوة:**\n\n👥 المشتركون: `{len(db['users'])}` \n⚙️ الحالة: `نشط`", parse_mode="Markdown")
+
+    elif call.data == "ui_back":
+        start_cmd(call.message)
+
+# --- محرك بحث الأفلام (العظمة التقنية) ---
+
+def search_movie(message):
+    movie_name = message.text
+    bot.send_chat_action(message.chat.id, 'typing')
+    
+    # استخدام API مجاني لجلب معلومات الأفلام (OMDB مثال)
+    # ملاحظة: يفضل الحصول على API KEY خاص بك من omdbapi.com
+    api_key = "3d1c166d" # مفتاح تجريبي
+    url = f"http://www.omdbapi.com/?t={movie_name}&apikey={api_key}"
     
     try:
-        ydl_opts = {
-            'quiet': True, 'noplaylist': True, 'default_search': 'ytsearch',
-            'outtmpl': f'downloads/{chat_id}_%(title)s.%(ext)s'
-        }
-
-        if call.data == "video":
-            ydl_opts.update({'format': 'best[filesize<45M]/best'})
+        data = requests.get(url).json()
+        if data['Response'] == 'True':
+            info = (
+                f"🎬 **الفيلم:** `{data['Title']}`\n"
+                f"📅 **السنة:** `{data['Year']}`\n"
+                f"⭐ **التقييم:** `{data['imdbRating']}/10`\n"
+                f"🎭 **النوع:** `{data['Genre']}`\n\n"
+                f"📖 **القصة:** {data['Plot'][:200]}..."
+            )
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton("📥 رابط التحميل (Google)", url=f"https://www.google.com/search?q=download+movie+{movie_name}"))
+            
+            bot.send_photo(message.chat.id, data['Poster'], caption=info, parse_mode="Markdown", reply_markup=markup)
         else:
-            ydl_opts.update({'format': 'bestaudio/best'})
+            bot.reply_to(message, "❌ **للأسف لم أجد فيلماً بهذا الاسم.. تأكد من الكتابة الصحيحة.**")
+    except:
+        bot.reply_to(message, "⚠️ **حدث خطأ في الاتصال بقاعدة بيانات الأفلام.**")
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+# --- ميزة الإذاعة (Broadcast) للآدمن ---
 
-        with open(filename, 'rb') as f:
-            if call.data == "video":
-                bot.send_video(chat_id, f, caption="🎬 تم التحميل بنجاح!")
-            else:
-                bot.send_audio(chat_id, f, caption="🎵 تم التحميل بنجاح!")
-        
-        os.remove(filename)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ حدث خطأ: {str(e)[:100]}")
+@bot.callback_query_handler(func=lambda call: call.data == "adm_broadcast")
+def start_broadcast(call):
+    msg = bot.send_message(call.message.chat.id, "📢 **أرسل الرسالة التي تريد نشرها لجميع المستخدمين:**")
+    bot.register_next_step_handler(msg, send_to_all)
 
+def send_to_all(message):
+    count = 0
+    for user in db["users"]:
+        try:
+            bot.send_message(user, f"📢 **رسالة من الإدارة:**\n\n{message.text}")
+            count += 1
+        except: continue
+    bot.send_message(ADMIN_ID, f"✅ تم إرسال الرسالة إلى `{count}` مستخدم بنجاح!")
+
+print("🚀 المنظومة الأسطورية قيد التشغيل..")
 bot.infinity_polling()

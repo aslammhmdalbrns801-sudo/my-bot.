@@ -1,6 +1,8 @@
-flask
-yt-dlp
 pyTelegramBotAPI
 yt-dlp
-pyTelegramBotAPI
-yt-dlp
+requests
+pillow
+gTTS
+wikipedia
+pyqrcode
+pypng
